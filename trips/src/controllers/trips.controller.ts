@@ -69,12 +69,12 @@ const tripController = {
             }
 
             tripExists.status = status;
+            tripExists.end_time= new Date();
             await tripExists.save();
+            
+            console.log("Trip completed: ", tripExists);
 
-            if(status == "complete"){
-                console.log("Trip completed: ", tripExists);
-                await publishToQueue("trip-complete", JSON.stringify(tripExists));
-            }
+            await publishToQueue("trip-complete", JSON.stringify(tripExists));
 
 
             res.status(200).json(tripExists);

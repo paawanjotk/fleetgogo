@@ -1,4 +1,7 @@
 import amqp from 'amqplib';
+import dotenv from 'dotenv';
+dotenv.config();
+
 const RABBITMQ_URL = process.env.RABBIT_URL || '';
 
 let connection,channel: any;

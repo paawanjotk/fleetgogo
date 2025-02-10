@@ -2,7 +2,7 @@ import express, { Request, Response } from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./routes/driver.routes";
-import {connect} from "../src/services/rabbit";
+import {connect} from "./services/rabbit";
 
 connect();
 

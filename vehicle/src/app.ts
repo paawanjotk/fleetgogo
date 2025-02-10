@@ -2,6 +2,8 @@ import express, { Request, Response } from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./routes/vehicle.routes";
+import {connect} from "./services/rabbit";
+connect();
 dotenv.config();
 
 const app = express();
