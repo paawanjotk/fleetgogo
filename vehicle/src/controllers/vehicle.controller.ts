@@ -91,9 +91,9 @@ subscribeToEvent("new-trip", async (message: any) => {
 });
 
 subscribeToEvent("trip-complete", async (message: any) => {
-  console.log("Trip completed: ", message.content.toString());
-  const trip = JSON.parse(message.content.toString());
-  const vehicle = await vehicles.findById({ _id: trip.vehicle });
+  console.log("Trip completed: ", message);
+  const trip = JSON.parse(message);
+  const vehicle = await vehicles.findById(trip.vehicle);
   if (vehicle) {
     vehicle.availability = "available";
     await vehicle.save();

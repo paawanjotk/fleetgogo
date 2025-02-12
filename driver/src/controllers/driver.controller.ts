@@ -146,11 +146,10 @@ subscribeToEvent("new-trip", async (message: any)=>{
 });
 
 subscribeToEvent("trip-complete", async (message: any)=>{
-    console.log('Trip completed: ', message.content.toString());
-    const trip = JSON.parse(message.toString());
-    let driverId = mongoose.Types.ObjectId.createFromHexString(trip.driver);
-    console.log("driverId: ", driverId);
-    const driver = await drivers.findById({_id: driverId});
+    console.log('Trip completed: ', message);
+    const trip = JSON.parse(message);
+    const driver = await drivers.findById(trip.driver);
+    console.log("driver: ", driver);
     if(driver){
         driver.status = 'active';
         await driver.save();

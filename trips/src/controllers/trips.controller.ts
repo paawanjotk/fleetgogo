@@ -89,12 +89,20 @@ const tripController = {
                 await tripExists.save();
                 console.log("Trip completed: ", tripExists);
                 await publishToExchange("trip-complete", tripExists);
+                res.status(200).json({
+                    id: tripExists._id,
+                    driver: (tripExists.driver).toString(),
+                    vehicle: (tripExists.vehicle).toString(),
+                    status: tripExists.status,
+                    start_time: (tripExists.start_time).toISOString(),
+                    end_time: (tripExists.end_time).toISOString(),
+                });
             } else{
                 tripExists.status = status;
                 await tripExists.save();
+                res.status(200).json(tripExists);
             }
 
-            res.status(200).json(tripExists);
         } catch(error: any){
             res.status(500).json({message: error.message});
         }
