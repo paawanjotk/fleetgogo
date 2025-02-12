@@ -11,11 +11,13 @@ const tripSchema = new Schema({
     },
     start_time:{
         type: Date,
-        required: true
+        required: true,
+        default: Date.now
     },
     end_time:{
         type: Date,
-        required: true
+        required: false,
+        default: null
     },
     status:{
         type: String,
