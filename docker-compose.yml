@@ -1,0 +1,77 @@
+version: "3.8"
+
+services:
+  driver:
+    build: ./driver
+    ports:
+      - "3001:3000"
+    env_file:
+      - ./driver/.env
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - fleet_network
+
+  vehicle:
+    build: ./vehicle
+    ports:
+      - "3002:3000"
+    env_file:
+      - ./vehicle/.env
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - fleet_network
+
+  trips:
+    build: ./trips
+    ports:
+      - "3003:3000"
+    env_file:
+      - ./trips/.env
+    depends_on:
+      - mongo
+      - redis
+    networks:
+      - fleet_network
+
+  gatewaygraphql:
+    build: ./gatewaygraphql
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./gatewaygraphql/.env
+    depends_on:
+      - driver
+      - vehicle
+      - trips
+    networks:
+      - fleet_network
+
+  mongo:
+    image: mongo:6.0
+    container_name: mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - fleet_network
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - fleet_network
+
+networks:
+  fleet_network:
+
+volumes:
+  mongo_data:
