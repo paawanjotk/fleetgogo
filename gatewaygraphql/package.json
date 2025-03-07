@@ -16,7 +16,8 @@
     "apollo-server": "^3.13.0",
     "axios": "^1.7.9",
     "dotenv": "^16.4.7",
-    "graphql": "^16.10.0"
+    "graphql": "^16.10.0",
+    "redis": "^4.7.0"
   },
   "devDependencies": {
     "@types/dotenv": "^8.2.3",

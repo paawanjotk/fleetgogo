@@ -26,7 +26,7 @@ async function subscribeToEvent(eventType: string, callback: (msg: string) => vo
     if (!channel) await connect();
 
     // Generate a unique queue for each consumer using a timestamp or random string
-    const queueName = `${eventType}_queue_${Math.random().toString(36).substring(7)}`;
+    const queueName = `${eventType}_queue_rhlnur`;
     
     await channel.assertQueue(queueName, { durable: true });
     await channel.bindQueue(queueName, EXCHANGE_NAME, eventType);

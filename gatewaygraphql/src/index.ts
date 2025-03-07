@@ -4,9 +4,11 @@ import axios from "axios";
 import express from "express";
 import { expressMiddleware } from "@apollo/server/express4";
 import dotenv from "dotenv";
+import redisClient from "./services/redis.js";
 dotenv.config();
 const app = express();
 
+const CACHE_EXPIRATION = 300;
 const DRIVERS = process.env.DRIVERS_SERVICE_URL;
 const VEHICLES = process.env.VEHICLES_SERVICE_URL;
 const TRIPS = process.env.TRIPS_SERVICE_URL;
@@ -73,8 +75,53 @@ const typeDefs = gql`
 
 const resolvers = {
   Query: {
-    drivers: () => fetch(`${DRIVERS}/drivers/`).then((res) => res.json()),
-    vehicles: () => fetch(`${VEHICLES}/vehicles/`).then((res) => res.json()),
+    drivers: async () => {
+      try {
+        const cacheKey ='drivers_list';
+
+        // Check if data exists in Redis cache
+        const cachedData = await redisClient.get(cacheKey);
+        if (cachedData) {
+          console.log('Data retrieved from cache: ', cachedData);
+          return JSON.parse(cachedData);
+        }
+        console.log('Data not found in cache');
+        const response = await fetch(`${DRIVERS}/drivers/`);
+        const drivers = await response.json();
+
+        await redisClient.setEx(cacheKey, CACHE_EXPIRATION, JSON.stringify(drivers));
+
+        return drivers; 
+               
+      } catch (error) {
+        console.error(error);
+        return { error: error.message };
+      }
+    },
+    vehicles: async () => {
+      try {
+        const cacheKey = 'vehicles_list';
+        
+        // Check if data exists in Redis cache
+        const cachedData = await redisClient.get(cacheKey);
+        if (cachedData) {
+          console.log('Data retrieved from cache: ', cachedData);
+          return JSON.parse(cachedData);
+        }
+        console.log('Data not found in cache');
+        const response = await fetch(`${VEHICLES}/vehicles/`);
+        const vehicles = await response.json();
+  
+        await redisClient.setEx(cacheKey, CACHE_EXPIRATION, JSON.stringify(vehicles));
+        
+
+        return vehicles;
+        
+      } catch (error) {
+        console.error(error);
+        return { error: error.message };
+      }
+    },
     trips: () => fetch(`${TRIPS}/trips/`).then((res) => res.json()),
     getDriverById: async (_: any, { id }: { id: string }) => {
       const response = await axios.get(`${DRIVERS}/drivers/${id}`);
