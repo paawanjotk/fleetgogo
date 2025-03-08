@@ -10,7 +10,7 @@ The **Fleet Management System** is a microservices-based backend that handles dr
 - **Vehicle Management:** Vehicle status tracking and maintenance updates.
 - **Trip Management:** Assignment of drivers and vehicles, trip status updates.
 - **Event-Driven Communication:** Uses RabbitMQ for asynchronous updates.
-- **GraphQL Gateway:** Unified API for seamless interaction with microservices.
+- **GraphQL Gateway:** Unified API for seamless interaction with microservices (Caching implemented for frequent queries).
 - **JWT Authentication:** Secure access for driver-related operations.
 
 ---
@@ -60,11 +60,11 @@ The **Fleet Management System** is a microservices-based backend that handles dr
 - Create and assign trips
 - Validate driver and vehicle availability
 - Track trip progress
+- Stores only active drivers and vehicles in redis DB for efficient management and assignment to trips
 
 **Events:**
 
 - `Trip Created`
-- `Trip Assigned`
 - `Trip Completed`
 
 ---
