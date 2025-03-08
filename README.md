@@ -76,8 +76,8 @@ To run the entire system using Docker:
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/your-repo/fleet-management.git
-   cd fleet-management
+   git clone https://github.com/paawanjotk/fleetgogo.git
+   cd fleetgogo
    ```
 
 2. Build and run containers:
@@ -150,10 +150,5 @@ docker ps
 - **Paawanjot K** 💖✨ (Main Developer)
 
 ---
-
-## License
-
-This project is licensed under **MIT License**.
-
 
 
