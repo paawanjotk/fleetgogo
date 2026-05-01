@@ -34,7 +34,7 @@ const typeDefs = gql`
     vehicle: String!
     status: String!
     start_time: String!
-    end_time: String!
+    end_time: String
   }
 
   type RegisterDriverResponse {
@@ -82,8 +82,11 @@ const resolvers = {
         // Check if data exists in Redis cache
         const cachedData = await redisClient.get(cacheKey);
         if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          if (Array.isArray(parsed) && parsed.length > 0) {
           console.log('Data retrieved from cache: ', cachedData);
-          return JSON.parse(cachedData);
+            return parsed;
+          }
         }
         console.log('Data not found in cache');
         const response = await fetch(`${DRIVERS}/drivers/`);
@@ -105,8 +108,11 @@ const resolvers = {
         // Check if data exists in Redis cache
         const cachedData = await redisClient.get(cacheKey);
         if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          if (Array.isArray(parsed) && parsed.length > 0) {
           console.log('Data retrieved from cache: ', cachedData);
-          return JSON.parse(cachedData);
+            return parsed;
+          }
         }
         console.log('Data not found in cache');
         const response = await fetch(`${VEHICLES}/vehicles/`);
@@ -160,9 +166,11 @@ const resolvers = {
       });
       console.log(response);
       const { token, newDriver } = response.data;
+      await redisClient.del('drivers_list');
       return { 
         token,
         driver: {
+          id: newDriver._id,
           name: newDriver.name,
           phone: newDriver.phone,
           license_number: newDriver.license_number,
@@ -179,6 +187,7 @@ const resolvers = {
         licence_plate: licensePlate,
       });
       console.log(response.data);
+      await redisClient.del('vehicles_list');
       return {
         id: response.data._id,
         type: response.data.type,
@@ -197,7 +206,7 @@ const resolvers = {
         vehicle: response.data.vehicle,
         status: response.data.status,
         start_time: response.data.start_time,
-        end_time: response.data.end_time,
+        end_time: response.data.end_time ?? null,
       }
     },
     updateTripStatus: async (

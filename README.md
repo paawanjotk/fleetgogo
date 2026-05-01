@@ -19,7 +19,7 @@ The **Fleet Management System** is a microservices-based backend that handles dr
 
 - **Backend:** Node.js, Express.js
 - **Database:** MongoDB
-- **Message Queue:** RabbitMQ (CloudAMQP)
+- **Message Queue:** RabbitMQ (local via Docker Compose or CloudAMQP)
 - **Caching:** Redis
 - **API Gateway:** GraphQL
 - **Containerization:** Docker
@@ -96,11 +96,24 @@ To run the entire system using Docker:
 
 ## RabbitMQ Setup
 
-The system uses **RabbitMQ**, and you will need to host your RabbitMQ instance on **CloudAMQP**.
+The system uses **RabbitMQ**. For local development, Docker Compose runs a local RabbitMQ instance for you. For production (or if you prefer), you can use **CloudAMQP**.
 
-1. Go to [CloudAMQP](https://www.cloudamqp.com/) and create an account.
-2. Set up a RabbitMQ instance and obtain the **AMQPS URL**.
-3. Add the obtained URL to your `.env` file under `RABBITMQ_URL`.
+### Local (recommended for development)
+
+1. Start the stack:
+
+   ```bash
+   docker-compose up --build
+   ```
+
+2. RabbitMQ Management UI is available at `http://localhost:15672` (default user/pass: `guest` / `guest`).
+
+By default, services will use `amqp://rabbitmq:5672` inside the Compose network.
+
+### CloudAMQP
+
+1. Create an instance on [CloudAMQP](https://www.cloudamqp.com/) and obtain the **AMQPS URL**.
+2. Set `RABBITMQ_URL=amqps://...` for the services.
 
 ---
 
@@ -147,7 +160,7 @@ docker ps
 
 ## Contributors
 
-- **Paawanjot K** 💖✨ (Main Developer)
+- **Paawanjot K** 
 
 ---
 

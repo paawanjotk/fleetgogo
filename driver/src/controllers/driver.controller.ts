@@ -173,7 +173,8 @@ const DriverController = {
 subscribeToEvent("new-trip", async (message: any)=>{
     try {
         console.log("message: ", message)
-        const trip = JSON.parse(message);
+        const parsed = JSON.parse(message);
+        const trip = parsed?.payload ?? parsed;
     
         const driver_id = trip.driver;
         const driver = await drivers.findById(driver_id);
@@ -192,7 +193,8 @@ subscribeToEvent("new-trip", async (message: any)=>{
 subscribeToEvent("trip-complete", async (message: any)=>{
     try {
         console.log('Trip completed: ', message);
-        const trip = JSON.parse(message);
+        const parsed = JSON.parse(message);
+        const trip = parsed?.payload ?? parsed;
         const driver = await drivers.findById(trip.driver);
         console.log("driver: ", driver);
         if(driver){

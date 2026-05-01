@@ -6,6 +6,8 @@ import { publishToExchange, subscribeToEvent } from "../services/rabbit";
 
 const DRIVER_KEY = "active_drivers";
 const VEHICLE_KEY = "active_vehicles";
+const DRIVERS_SERVICE_URL = process.env.DRIVERS_SERVICE_URL || "http://driver:3001";
+const VEHICLES_SERVICE_URL = process.env.VEHICLES_SERVICE_URL || "http://vehicle:3002";
 
 // Function to fetch active entities from Redis or API
 const getActiveEntities = async (entity: string, apiUrl: string) => {
@@ -39,8 +41,8 @@ const tripController = {
         try {
             console.log("Creating a new trip...");
             
-            const drivers = await getActiveEntities(DRIVER_KEY, "http://localhost:3001/drivers/status/active");
-            const vehicles = await getActiveEntities(VEHICLE_KEY, "http://localhost:3002/vehicles/status/available");
+            const drivers = await getActiveEntities(DRIVER_KEY, `${DRIVERS_SERVICE_URL}/drivers/status/active`);
+            const vehicles = await getActiveEntities(VEHICLE_KEY, `${VEHICLES_SERVICE_URL}/vehicles/status/available`);
 
             if (!drivers || drivers.length === 0) {
                 return res.status(404).json({ message: "No active drivers available" });
@@ -147,9 +149,10 @@ const tripController = {
 
 subscribeToEvent("driver-availability", async (message)=>{
     console.log("Received driver availability event:", message);
-    const parsedMessage = JSON.parse(message);
+    const parsed = JSON.parse(message);
+    const parsedMessage = parsed?.payload ?? parsed;
     if(parsedMessage.availability === "active"){
-        await redisClient.hSet(DRIVER_KEY, parsedMessage.driver_id, JSON.stringify(parsedMessage.driver_id));
+        await redisClient.hSet(DRIVER_KEY, parsedMessage.driver_id, JSON.stringify({ _id: parsedMessage.driver_id }));
     } else if(parsedMessage.availability === "inactive" || parsedMessage.availability === "occupied"){
         await redisClient.hDel(DRIVER_KEY, parsedMessage.driver_id);
     }
@@ -157,9 +160,10 @@ subscribeToEvent("driver-availability", async (message)=>{
 
 subscribeToEvent("vehicle-availability", async (message)=>{
     console.log("Received vehicle availability event:", message);
-    const parsedMessage = JSON.parse(message);
+    const parsed = JSON.parse(message);
+    const parsedMessage = parsed?.payload ?? parsed;
     if(parsedMessage.availability === "available"){
-        await redisClient.hSet(VEHICLE_KEY, parsedMessage.vehicle_id, JSON.stringify(parsedMessage.vehicle_id));
+        await redisClient.hSet(VEHICLE_KEY, parsedMessage.vehicle_id, JSON.stringify({ _id: parsedMessage.vehicle_id }));
     } else if(parsedMessage.availability === "in-maintenance" || parsedMessage.availability === "assigned"){
         await redisClient.hDel(VEHICLE_KEY, parsedMessage.vehicle_id);
     }

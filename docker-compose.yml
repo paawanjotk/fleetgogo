@@ -3,42 +3,60 @@ version: "3.8"
 services:
   driver:
     build: ./driver
+    restart: unless-stopped
     ports:
-      - "3001:3000"
+      - "3001:3001"
     env_file:
       - ./driver/.env
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://rabbitmq:5672}
+      - SERVICE_NAME=driver
     depends_on:
       - mongo
       - redis
+      - rabbitmq
     networks:
       - fleet_network
 
   vehicle:
     build: ./vehicle
+    restart: unless-stopped
     ports:
-      - "3002:3000"
+      - "3002:3002"
     env_file:
       - ./vehicle/.env
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://rabbitmq:5672}
+      - SERVICE_NAME=vehicle
     depends_on:
       - mongo
       - redis
+      - rabbitmq
     networks:
       - fleet_network
 
   trips:
     build: ./trips
+    restart: unless-stopped
     ports:
-      - "3003:3000"
+      - "3003:3003"
     env_file:
       - ./trips/.env
+    environment:
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://rabbitmq:5672}
+      - DRIVERS_SERVICE_URL=${DRIVERS_SERVICE_URL:-http://driver:3001}
+      - VEHICLES_SERVICE_URL=${VEHICLES_SERVICE_URL:-http://vehicle:3002}
+      - SERVICE_NAME=trips
     depends_on:
       - mongo
       - redis
+      - rabbitmq
     networks:
       - fleet_network
 
   gatewaygraphql:
     build: ./gatewaygraphql
+    restart: unless-stopped
     ports:
       - "4000:4000"
     env_file:
@@ -67,6 +85,16 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    networks:
+      - fleet_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     networks:
       - fleet_network
 

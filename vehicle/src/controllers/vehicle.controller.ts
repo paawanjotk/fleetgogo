@@ -104,7 +104,8 @@ subscribeToEvent("new-trip", async (message: any) => {
   try {
     console.log("New trip received:", message);
 
-    const trip = JSON.parse(message);
+    const parsed = JSON.parse(message);
+    const trip = parsed?.payload ?? parsed;
     console.log("Vehicle:", trip.vehicle);
     
     const vehicleId = trip.vehicle; // This is a string id
@@ -123,7 +124,8 @@ subscribeToEvent("new-trip", async (message: any) => {
 subscribeToEvent("trip-complete", async (message: any) => {
   try{
     console.log("Trip completed: ", message);
-    const trip = JSON.parse(message);
+    const parsed = JSON.parse(message);
+    const trip = parsed?.payload ?? parsed;
     const vehicle = await vehicles.findById(trip.vehicle);
     if (vehicle) {
       vehicle.availability = "available";
