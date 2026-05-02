@@ -2,6 +2,7 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import router from "./routes/trips.routes";
+import healthRouter from "./routes/health.routes";
 import {connect} from "./services/rabbit";
 connect();
 dotenv.config();
@@ -12,6 +13,7 @@ app.use(express.urlencoded({ extended: true }));
 const port = 3003;
 
 
+app.use('/health', healthRouter);
 app.use('/trips', router);
 
 // Connect to MongoDB

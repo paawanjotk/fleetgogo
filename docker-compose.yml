@@ -17,6 +17,12 @@ services:
       - rabbitmq
     networks:
       - fleet_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   vehicle:
     build: ./vehicle
@@ -34,6 +40,12 @@ services:
       - rabbitmq
     networks:
       - fleet_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   trips:
     build: ./trips
@@ -53,6 +65,12 @@ services:
       - rabbitmq
     networks:
       - fleet_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
 
   gatewaygraphql:
     build: ./gatewaygraphql
@@ -62,11 +80,20 @@ services:
     env_file:
       - ./gatewaygraphql/.env
     depends_on:
-      - driver
-      - vehicle
-      - trips
+      driver:
+        condition: service_healthy
+      vehicle:
+        condition: service_healthy
+      trips:
+        condition: service_healthy
     networks:
       - fleet_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   mongo:
     image: mongo:6.0

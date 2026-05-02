@@ -12,6 +12,7 @@ The **Fleet Management System** is a microservices-based backend that handles dr
 - **Event-Driven Communication:** Uses RabbitMQ for asynchronous updates.
 - **GraphQL Gateway:** Unified API for seamless interaction with microservices (Caching implemented for frequent queries).
 - **JWT Authentication:** Secure access for driver-related operations.
+- **Health Checks:** Each service exposes a `/health` endpoint reporting dependency status (MongoDB, RabbitMQ, Redis). Docker Compose uses these to gate service startup order.
 
 ---
 
@@ -130,7 +131,55 @@ https://www.postman.com/martian-eclipse-158887/team-workspace/graphql-request/67
 
 ---
 
+## Health Checks
+
+Every service exposes `GET /health`. The response follows a three-state model:
+
+| Status | HTTP | Meaning |
+|--------|------|---------|
+| `healthy` | 200 | All dependencies up |
+| `degraded` | 200 | Non-critical dependency down (RabbitMQ / Redis) — service still operational |
+| `unhealthy` | 503 | Critical dependency down (MongoDB for data services, Redis for gateway) |
+
+**Example response:**
+```json
+{
+  "status": "healthy",
+  "service": "driver",
+  "uptime": 42.3,
+  "checks": {
+    "mongodb": { "status": "healthy" },
+    "rabbitmq": { "status": "healthy" }
+  },
+  "timestamp": "2026-05-02T10:00:00.000Z"
+}
+```
+
+**Endpoints:**
+
+| Service | URL |
+|---------|-----|
+| Driver | `http://localhost:3001/health` |
+| Vehicle | `http://localhost:3002/health` |
+| Trips | `http://localhost:3003/health` |
+| GraphQL Gateway | `http://localhost:4000/health` |
+
+The gateway's `/health` additionally pings all three downstream services and reports their status under `checks`.
+
+Docker Compose uses these endpoints as `healthcheck` probes. The gateway container will only start once driver, vehicle, and trips are healthy.
+
+---
+
 ## Monitoring & Debugging
+
+### Check Service Health:
+
+```bash
+curl http://localhost:3001/health   # driver
+curl http://localhost:3002/health   # vehicle
+curl http://localhost:3003/health   # trips
+curl http://localhost:4000/health   # gateway (aggregates all)
+```
 
 ### View Redis Data:
 
@@ -150,7 +199,6 @@ docker ps
 
 ## Future Enhancements
 
-- Implement dead-letter queues for failed event processing.
 - Error Handling in GraphQL
 - Choosing vehicle type while creating a trip.
 - Add real-time driver tracking with WebSockets.

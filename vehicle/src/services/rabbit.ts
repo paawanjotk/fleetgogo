@@ -113,4 +113,8 @@ async function subscribeToEvent(eventType: string, callback: (msg: string) => vo
     }, { noAck: false });
 }
 
-export { publishToExchange, subscribeToEvent, connect };
+function isConnected(): boolean {
+    return !!channel;
+}
+
+export { publishToExchange, subscribeToEvent, connect, isConnected };

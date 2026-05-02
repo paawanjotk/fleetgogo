@@ -233,4 +233,47 @@ app.use(
   })
 );
 
+const HEALTH_TIMEOUT_MS = 3000;
+
+app.get('/health', async (_req, res) => {
+  const redisOk = redisClient.isOpen;
+
+  const ping = async (url: string): Promise<boolean> => {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), HEALTH_TIMEOUT_MS);
+      const r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(t);
+      return r.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const [driverOk, vehicleOk, tripsOk] = await Promise.all([
+    ping(`${DRIVERS}/health`),
+    ping(`${VEHICLES}/health`),
+    ping(`${TRIPS}/health`),
+  ]);
+
+  const checks = {
+    redis:   { status: redisOk   ? 'healthy' : 'unhealthy' },
+    driver:  { status: driverOk  ? 'healthy' : 'degraded'  },
+    vehicle: { status: vehicleOk ? 'healthy' : 'degraded'  },
+    trips:   { status: tripsOk   ? 'healthy' : 'degraded'  },
+  };
+
+  const status = !redisOk ? 'unhealthy'
+    : (!driverOk || !vehicleOk || !tripsOk) ? 'degraded'
+    : 'healthy';
+
+  res.status(redisOk ? 200 : 503).json({
+    status,
+    service: 'gatewaygraphql',
+    uptime: process.uptime(),
+    checks,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.listen(4000, () => console.log("GraphQL running on 4000"));
