@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import vehicles from "../model/vehicle.model";
 import { publishToExchange, subscribeToEvent } from "../services/rabbit";
+import redisClient from "../services/redis";
 import mongoose from "mongoose";
 
 const vehicleController = {
@@ -104,8 +105,17 @@ subscribeToEvent("new-trip", async (message: any) => {
   try {
     console.log("New trip received:", message);
 
-    const parsed = JSON.parse(message);
-    const trip = parsed?.payload ?? parsed;
+    const envelope = JSON.parse(message);
+    const { eventId } = envelope;
+    const trip = envelope?.payload ?? envelope;
+
+    if (eventId) {
+      const isNew = await redisClient.set(`dedupe:vehicle:${eventId}`, '1', { NX: true, EX: 86400 });
+      if (!isNew) {
+        console.log(`Skipping duplicate event ${eventId}`);
+        return;
+      }
+    }
     console.log("Vehicle:", trip.vehicle);
     
     const vehicleId = trip.vehicle; // This is a string id
@@ -124,8 +134,17 @@ subscribeToEvent("new-trip", async (message: any) => {
 subscribeToEvent("trip-complete", async (message: any) => {
   try{
     console.log("Trip completed: ", message);
-    const parsed = JSON.parse(message);
-    const trip = parsed?.payload ?? parsed;
+    const envelope = JSON.parse(message);
+    const { eventId } = envelope;
+    const trip = envelope?.payload ?? envelope;
+
+    if (eventId) {
+      const isNew = await redisClient.set(`dedupe:vehicle:${eventId}`, '1', { NX: true, EX: 86400 });
+      if (!isNew) {
+        console.log(`Skipping duplicate event ${eventId}`);
+        return;
+      }
+    }
     const vehicle = await vehicles.findById(trip.vehicle);
     if (vehicle) {
       vehicle.availability = "available";

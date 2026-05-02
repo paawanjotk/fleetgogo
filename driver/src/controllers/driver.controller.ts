@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import drivers from "../models/driver.model";
 import { publishToExchange, subscribeToEvent } from "../services/rabbit";
+import redisClient from "../services/redis";
 import mongoose from "mongoose";
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
@@ -173,9 +174,18 @@ const DriverController = {
 subscribeToEvent("new-trip", async (message: any)=>{
     try {
         console.log("message: ", message)
-        const parsed = JSON.parse(message);
-        const trip = parsed?.payload ?? parsed;
-    
+        const envelope = JSON.parse(message);
+        const { eventId } = envelope;
+        const trip = envelope?.payload ?? envelope;
+
+        if (eventId) {
+            const isNew = await redisClient.set(`dedupe:driver:${eventId}`, '1', { NX: true, EX: 86400 });
+            if (!isNew) {
+                console.log(`Skipping duplicate event ${eventId}`);
+                return;
+            }
+        }
+
         const driver_id = trip.driver;
         const driver = await drivers.findById(driver_id);
         console.log("driver: ", driver);
@@ -193,8 +203,17 @@ subscribeToEvent("new-trip", async (message: any)=>{
 subscribeToEvent("trip-complete", async (message: any)=>{
     try {
         console.log('Trip completed: ', message);
-        const parsed = JSON.parse(message);
-        const trip = parsed?.payload ?? parsed;
+        const envelope = JSON.parse(message);
+        const { eventId } = envelope;
+        const trip = envelope?.payload ?? envelope;
+
+        if (eventId) {
+            const isNew = await redisClient.set(`dedupe:driver:${eventId}`, '1', { NX: true, EX: 86400 });
+            if (!isNew) {
+                console.log(`Skipping duplicate event ${eventId}`);
+                return;
+            }
+        }
         const driver = await drivers.findById(trip.driver);
         console.log("driver: ", driver);
         if(driver){
