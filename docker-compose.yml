@@ -11,10 +11,12 @@ services:
     environment:
       - RABBITMQ_URL=${RABBITMQ_URL:-amqp://rabbitmq:5672}
       - SERVICE_NAME=driver
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
     depends_on:
       - mongo
       - redis
       - rabbitmq
+      - otel-collector
     networks:
       - fleet_network
     healthcheck:
@@ -34,10 +36,12 @@ services:
     environment:
       - RABBITMQ_URL=${RABBITMQ_URL:-amqp://rabbitmq:5672}
       - SERVICE_NAME=vehicle
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
     depends_on:
       - mongo
       - redis
       - rabbitmq
+      - otel-collector
     networks:
       - fleet_network
     healthcheck:
@@ -59,10 +63,12 @@ services:
       - DRIVERS_SERVICE_URL=${DRIVERS_SERVICE_URL:-http://driver:3001}
       - VEHICLES_SERVICE_URL=${VEHICLES_SERVICE_URL:-http://vehicle:3002}
       - SERVICE_NAME=trips
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
     depends_on:
       - mongo
       - redis
       - rabbitmq
+      - otel-collector
     networks:
       - fleet_network
     healthcheck:
@@ -79,6 +85,9 @@ services:
       - "4000:4000"
     env_file:
       - ./gatewaygraphql/.env
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4318/v1/traces}
+      - SERVICE_NAME=gatewaygraphql
     depends_on:
       driver:
         condition: service_healthy
@@ -86,6 +95,8 @@ services:
         condition: service_healthy
       trips:
         condition: service_healthy
+      otel-collector:
+        condition: service_started
     networks:
       - fleet_network
     healthcheck:
@@ -122,6 +133,29 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    networks:
+      - fleet_network
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - jaeger
+    networks:
+      - fleet_network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "4317:4317"   # OTLP gRPC (collector)
     networks:
       - fleet_network
 

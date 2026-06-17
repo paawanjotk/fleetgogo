@@ -1,14 +1,15 @@
 import { createClient } from 'redis';
+import { logger } from '../utils/logger';
 
 const redisClient = createClient({ url: 'redis://redis:6379' });
-redisClient.on('error', (err) => console.error('Redis Client Error', err));
+redisClient.on('error', (err) => logger.error({ err }, 'Redis Client Error'));
 
 (async () => {
   try {
     await redisClient.connect();
-    console.log('Connected to Redis');
+    logger.info('Connected to Redis');
   } catch (err) {
-    console.error('Redis Connection Error:', err);
+    logger.error({ err }, 'Redis Connection Error');
   }
 })();
 

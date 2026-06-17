@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import trips from "../models/trips.model";
 import redisClient from "../services/redis";
 import { publishToExchange, subscribeToEvent } from "../services/rabbit";
+import { logger } from "../utils/logger";
 
 const DRIVER_KEY = "active_drivers";
 const VEHICLE_KEY = "active_vehicles";
@@ -27,7 +28,7 @@ const atomicPop = async (hashKey: string): Promise<{ _id: string } | null> => {
 const tripController = {
     createTrip: async (req: Request, res: Response) => {
         try {
-            console.log("Creating a new trip...");
+            logger.info({ requestId: res.locals.requestId }, "trip.create.start");
 
             // Atomically claim one driver — removed from the hash immediately,
             // invisible to any concurrent request from this point forward.
@@ -61,7 +62,7 @@ const tripController = {
 
             // Publish the event. Driver/vehicle services will mark them occupied/assigned
             // and emit availability events — those will attempt hDel on keys already gone. No-op, fine.
-            await publishToExchange("new-trip", newTrip);
+            await publishToExchange("new-trip", { ...newTrip.toObject(), _correlationId: res.locals.requestId });
 
             res.status(201).json({
                 _id: newTrip._id,
@@ -71,7 +72,7 @@ const tripController = {
                 start_time: newTrip.start_time.toISOString(),
             });
         } catch (error: any) {
-            console.error(error);
+            logger.error({ requestId: res.locals.requestId, err: error }, "trip.create.error");
             res.status(500).json({ message: error.message });
         }
     },
@@ -127,7 +128,7 @@ const tripController = {
             trip.status = status;
             if (status === "complete" || status === "cancelled") {
                 trip.end_time = new Date();
-                await publishToExchange("trip-complete", trip);
+                await publishToExchange("trip-complete", { ...trip.toObject(), _correlationId: res.locals.requestId });
             }
             await trip.save();
 
@@ -146,15 +147,14 @@ const tripController = {
 };
 
 subscribeToEvent("driver-availability", async (message)=>{
-    console.log("Received driver availability event:", message);
     const envelope = JSON.parse(message);
-    const { eventId } = envelope;
+    const { eventId, correlationId } = envelope;
     const parsedMessage = envelope?.payload ?? envelope;
 
     if (eventId) {
         const isNew = await redisClient.set(`dedupe:trips:${eventId}`, '1', { NX: true, EX: 86400 });
         if (!isNew) {
-            console.log(`Skipping duplicate event ${eventId}`);
+            logger.info({ eventId, correlationId }, "rabbit.dedupe.skip");
             return;
         }
     }
@@ -166,15 +166,14 @@ subscribeToEvent("driver-availability", async (message)=>{
 });
 
 subscribeToEvent("vehicle-availability", async (message)=>{
-    console.log("Received vehicle availability event:", message);
     const envelope = JSON.parse(message);
-    const { eventId } = envelope;
+    const { eventId, correlationId } = envelope;
     const parsedMessage = envelope?.payload ?? envelope;
 
     if (eventId) {
         const isNew = await redisClient.set(`dedupe:trips:${eventId}`, '1', { NX: true, EX: 86400 });
         if (!isNew) {
-            console.log(`Skipping duplicate event ${eventId}`);
+            logger.info({ eventId, correlationId }, "rabbit.dedupe.skip");
             return;
         }
     }

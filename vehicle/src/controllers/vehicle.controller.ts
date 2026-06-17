@@ -3,20 +3,25 @@ import vehicles from "../model/vehicle.model";
 import { publishToExchange, subscribeToEvent } from "../services/rabbit";
 import redisClient from "../services/redis";
 import mongoose from "mongoose";
+import { logger } from "../utils/logger";
 
 const vehicleController = {
   registerVehicle: async (req: Request, res: Response) => {
     const { type, licence_plate } = req.body;
-    console.log("new vehicle: ", type, licence_plate);
+    logger.info({ requestId: res.locals.requestId, type, licence_plate }, "vehicle.register.start");
     try {
       const newVehicle = await vehicles.create({
         type: type,
         licence_plate: licence_plate,
       });
-      publishToExchange("vehicle-availability", {vehicle_id: newVehicle._id, availability: "available"});
+      publishToExchange("vehicle-availability", {
+        vehicle_id: newVehicle._id,
+        availability: "available",
+        _correlationId: res.locals.requestId,
+      });
       res.status(201).json(newVehicle);
     } catch (error: any) {
-      console.log(error);
+      logger.error({ requestId: res.locals.requestId, err: error }, "vehicle.register.error");
       res.status(500).json({ message: error.message });
     }
   },
@@ -28,7 +33,6 @@ const vehicleController = {
         let obj = { ...vehicle, id: vehicle._id.toString(), license_plate: vehicle.licence_plate };
         return obj;
       });
-      console.log(vehiclesAll);
 
       res.status(200).json(vehiclesAll);
     } catch (error: any) {
@@ -42,7 +46,6 @@ const vehicleController = {
       const vehicle = await vehicles.findById({ _id: id }).lean();
       if (vehicle) {
         const obj = { ...vehicle, id: vehicle._id.toString(), license_plate: vehicle.licence_plate };
-        console.log(obj);
         res.status(200).json(obj);
       } else {
         res.status(404).json({ message: "Vehicle not found" });
@@ -84,7 +87,7 @@ const vehicleController = {
       }
       vehicleExists.availability = availability;
       await vehicleExists.save();
-      await publishToExchange("vehicle-availability", {vehicle_id: id, availability});
+      await publishToExchange("vehicle-availability", {vehicle_id: id, availability, _correlationId: res.locals.requestId});
       res.status(200).json(vehicleExists);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -103,45 +106,41 @@ const vehicleController = {
 
 subscribeToEvent("new-trip", async (message: any) => {
   try {
-    console.log("New trip received:", message);
-
     const envelope = JSON.parse(message);
-    const { eventId } = envelope;
+    const { eventId, correlationId } = envelope;
     const trip = envelope?.payload ?? envelope;
 
     if (eventId) {
       const isNew = await redisClient.set(`dedupe:vehicle:${eventId}`, '1', { NX: true, EX: 86400 });
       if (!isNew) {
-        console.log(`Skipping duplicate event ${eventId}`);
+        logger.info({ eventId, correlationId }, "rabbit.dedupe.skip");
         return;
       }
     }
-    console.log("Vehicle:", trip.vehicle);
     
     const vehicleId = trip.vehicle; // This is a string id
     const vehicle = await vehicles.findById(vehicleId);
-    console.log("vehicle:", vehicle);
+    logger.info({ vehicleId, correlationId }, "vehicle.assignTrip");
     if (vehicle) {
       vehicle.availability = "assigned";
       await vehicle.save();
-      publishToExchange("vehicle-availability", {vehicle_id: vehicleId, availability: "assigned"});
+      publishToExchange("vehicle-availability", {vehicle_id: vehicleId, availability: "assigned", _correlationId: correlationId});
     }
   } catch (error) {
-    console.error("Error processing new trip:", error);
+    logger.error({ err: error }, "Error processing new trip");
   }
 });
 
 subscribeToEvent("trip-complete", async (message: any) => {
   try{
-    console.log("Trip completed: ", message);
     const envelope = JSON.parse(message);
-    const { eventId } = envelope;
+    const { eventId, correlationId } = envelope;
     const trip = envelope?.payload ?? envelope;
 
     if (eventId) {
       const isNew = await redisClient.set(`dedupe:vehicle:${eventId}`, '1', { NX: true, EX: 86400 });
       if (!isNew) {
-        console.log(`Skipping duplicate event ${eventId}`);
+        logger.info({ eventId, correlationId }, "rabbit.dedupe.skip");
         return;
       }
     }
@@ -149,10 +148,10 @@ subscribeToEvent("trip-complete", async (message: any) => {
     if (vehicle) {
       vehicle.availability = "available";
       await vehicle.save();
-      publishToExchange("vehicle-availability", {vehicle_id: trip.vehicle, availability: "available"});
+      publishToExchange("vehicle-availability", {vehicle_id: trip.vehicle, availability: "available", _correlationId: correlationId});
     }
   }catch (error) {
-    console.error("Error processing complete trip:", error);
+    logger.error({ err: error }, "Error processing complete trip");
   }
 });
 

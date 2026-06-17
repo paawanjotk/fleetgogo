@@ -1,3 +1,4 @@
+import './tracing.js';
 import { ApolloServer } from "@apollo/server";
 import { gql } from "apollo-server";
 import axios from "axios";
@@ -5,14 +6,19 @@ import express from "express";
 import { expressMiddleware } from "@apollo/server/express4";
 import dotenv from "dotenv";
 import redisClient from "./services/redis.js";
+import { requestIdMiddleware } from "./middleware/requestId.js";
+import { httpLogger } from "./middleware/httpLogger.js";
+import { logger } from "./utils/logger.js";
 dotenv.config();
 const app = express();
+app.use(requestIdMiddleware);
+app.use(httpLogger);
 
 const CACHE_EXPIRATION = 300;
 const DRIVERS = process.env.DRIVERS_SERVICE_URL;
 const VEHICLES = process.env.VEHICLES_SERVICE_URL;
 const TRIPS = process.env.TRIPS_SERVICE_URL;
-console.log(DRIVERS, VEHICLES, TRIPS);
+logger.info({ DRIVERS, VEHICLES, TRIPS }, "service.urls");
 
 const typeDefs = gql`
   type Driver {
@@ -75,8 +81,9 @@ const typeDefs = gql`
 
 const resolvers = {
   Query: {
-    drivers: async () => {
+    drivers: async (_: any, __: any, ctx: any) => {
       try {
+        const requestId = ctx.requestId;
         const cacheKey ='drivers_list';
 
         // Check if data exists in Redis cache
@@ -84,12 +91,14 @@ const resolvers = {
         if (cachedData) {
           const parsed = JSON.parse(cachedData);
           if (Array.isArray(parsed) && parsed.length > 0) {
-          console.log('Data retrieved from cache: ', cachedData);
+            logger.info({ requestId, cacheKey }, 'cache.hit');
             return parsed;
           }
         }
-        console.log('Data not found in cache');
-        const response = await fetch(`${DRIVERS}/drivers/`);
+        logger.info({ requestId, cacheKey }, 'cache.miss');
+        const response = await fetch(`${DRIVERS}/drivers/`, {
+          headers: requestId ? { 'X-Request-ID': requestId } : undefined,
+        });
         const drivers = await response.json();
 
         await redisClient.setEx(cacheKey, CACHE_EXPIRATION, JSON.stringify(drivers));
@@ -97,12 +106,13 @@ const resolvers = {
         return drivers; 
                
       } catch (error) {
-        console.error(error);
+        logger.error({ err: error }, 'drivers.query.error');
         return { error: error.message };
       }
     },
-    vehicles: async () => {
+    vehicles: async (_: any, __: any, ctx: any) => {
       try {
+        const requestId = ctx.requestId;
         const cacheKey = 'vehicles_list';
         
         // Check if data exists in Redis cache
@@ -110,12 +120,14 @@ const resolvers = {
         if (cachedData) {
           const parsed = JSON.parse(cachedData);
           if (Array.isArray(parsed) && parsed.length > 0) {
-          console.log('Data retrieved from cache: ', cachedData);
+            logger.info({ requestId, cacheKey }, 'cache.hit');
             return parsed;
           }
         }
-        console.log('Data not found in cache');
-        const response = await fetch(`${VEHICLES}/vehicles/`);
+        logger.info({ requestId, cacheKey }, 'cache.miss');
+        const response = await fetch(`${VEHICLES}/vehicles/`, {
+          headers: requestId ? { 'X-Request-ID': requestId } : undefined,
+        });
         const vehicles = await response.json();
   
         await redisClient.setEx(cacheKey, CACHE_EXPIRATION, JSON.stringify(vehicles));
@@ -124,21 +136,30 @@ const resolvers = {
         return vehicles;
         
       } catch (error) {
-        console.error(error);
+        logger.error({ err: error }, 'vehicles.query.error');
         return { error: error.message };
       }
     },
-    trips: () => fetch(`${TRIPS}/trips/`).then((res) => res.json()),
-    getDriverById: async (_: any, { id }: { id: string }) => {
-      const response = await axios.get(`${DRIVERS}/drivers/${id}`);
+    trips: async (_: any, __: any, ctx: any) =>
+      fetch(`${TRIPS}/trips/`, {
+        headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined,
+      }).then((res) => res.json()),
+    getDriverById: async (_: any, { id }: { id: string }, ctx: any) => {
+      const response = await axios.get(`${DRIVERS}/drivers/${id}`, {
+        headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined,
+      });
       return response.data;
     },
-    getVehicleById: async (_: any, { id }: { id: string }) => {
-      const response = await axios.get(`${VEHICLES}/vehicles/${id}`);
+    getVehicleById: async (_: any, { id }: { id: string }, ctx: any) => {
+      const response = await axios.get(`${VEHICLES}/vehicles/${id}`, {
+        headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined,
+      });
       return response.data;
     },
-    getTripById: async (_: any, { id }: { id: string }) => {
-      const response = await axios.get(`${TRIPS}/trips/${id}`);
+    getTripById: async (_: any, { id }: { id: string }, ctx: any) => {
+      const response = await axios.get(`${TRIPS}/trips/${id}`, {
+        headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined,
+      });
       return response.data;
     },
   },
@@ -155,16 +176,15 @@ const resolvers = {
         phone: string;
         password: string;
         license_number: string;
-      }
+      },
+      ctx: any
     ) => {
-      console.log("register driver: ", name);
-      const response = await axios.post(`${DRIVERS}/drivers/register`, {
-        name,
-        phone,
-        password,
-        license_number,
-      });
-      console.log(response);
+      logger.info({ requestId: ctx.requestId, name }, "registerDriver.mutation");
+      const response = await axios.post(
+        `${DRIVERS}/drivers/register`,
+        { name, phone, password, license_number },
+        { headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined }
+      );
       const { token, newDriver } = response.data;
       await redisClient.del('drivers_list');
       return { 
@@ -180,13 +200,14 @@ const resolvers = {
     },
     registerVehicle: async (
       _: any,
-      { type, licensePlate }: { type: string; licensePlate: string }
+      { type, licensePlate }: { type: string; licensePlate: string },
+      ctx: any
     ) => {
-      const response = await axios.post(`${VEHICLES}/vehicles/register`, {
-        type,
-        licence_plate: licensePlate,
-      });
-      console.log(response.data);
+      const response = await axios.post(
+        `${VEHICLES}/vehicles/register`,
+        { type, licence_plate: licensePlate },
+        { headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined }
+      );
       await redisClient.del('vehicles_list');
       return {
         id: response.data._id,
@@ -195,10 +216,10 @@ const resolvers = {
         availability: response.data.availability,
       }
     },
-    createTrip: async (_: any) => {
-      console.log("create trip");
-      const response = await axios.post(`${TRIPS}/trips/createTrip`);
-      console.log(response.data);
+    createTrip: async (_: any, __: any, ctx: any) => {
+      const response = await axios.post(`${TRIPS}/trips/createTrip`, undefined, {
+        headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined,
+      });
 
       return {
         id: response.data._id,
@@ -211,10 +232,13 @@ const resolvers = {
     },
     updateTripStatus: async (
       _: any,
-      { id, status }: { id: string; status: string }
+      { id, status }: { id: string; status: string },
+      ctx: any
     ) => {
       const response = await axios.put(`${TRIPS}/trips/${id}/status`, {
         status,
+      }, {
+        headers: ctx.requestId ? { 'X-Request-ID': ctx.requestId } : undefined,
       });
       return response.data;
     },
@@ -229,7 +253,7 @@ app.use(
   "/graphql",
   express.json(),
   expressMiddleware(server, {
-    context: async ({ req }) => ({ req }),
+    context: async ({ req, res }) => ({ req, requestId: (res as any)?.locals?.requestId }),
   })
 );
 
@@ -276,4 +300,4 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-app.listen(4000, () => console.log("GraphQL running on 4000"));
+app.listen(4000, () => logger.info({ port: 4000 }, "Server started"));

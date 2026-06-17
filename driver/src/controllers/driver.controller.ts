@@ -3,13 +3,14 @@ import drivers from "../models/driver.model";
 import { publishToExchange, subscribeToEvent } from "../services/rabbit";
 import redisClient from "../services/redis";
 import mongoose from "mongoose";
+import { logger } from "../utils/logger";
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const DriverController = {
     registerDriver : async (req: Request, res: Response)=>{
 
         const {name, phone, password, license_number} =  req.body;
-        console.log("register driver: ", name);
+        logger.info({ requestId: res.locals.requestId, name }, "driver.register.start");
 
         const saltRounds = 10;
         try{
@@ -37,11 +38,15 @@ const DriverController = {
 
             const token = jwt.sign({id: newDriver._id}, secret, {expiresIn: '7d'});
             
-            publishToExchange("driver-availability", {driver_id: newDriver._id, availability: 'active'});
+            publishToExchange("driver-availability", {
+              driver_id: newDriver._id,
+              availability: 'active',
+              _correlationId: res.locals.requestId,
+            });
 
             res.status(201).json({token, newDriver});
         } catch(error: any){
-            console.log(error);
+            logger.error({ requestId: res.locals.requestId, err: error }, "driver.register.error");
             res.status(500).json({message: error.message || "Internal Server Error"});
         }
     },
@@ -79,7 +84,7 @@ const DriverController = {
         }
     },
     getDrivers: async (req: Request, res: Response)=>{
-        console.log("get all drivers")
+        logger.info({ requestId: res.locals.requestId }, "driver.list");
         try{
             let allDrivers = await drivers.find().lean();
             let driversAll = allDrivers.map((driver: any) => {
@@ -87,7 +92,6 @@ const DriverController = {
                 delete obj._id;
                 return obj;
             });
-            console.log(driversAll);
             res.status(200).json(driversAll);
         } catch(error: any){
             res.status(500).json({message: error.message});
@@ -99,7 +103,6 @@ const DriverController = {
             const driver = await drivers.findById({_id: id}).lean();
             if(driver){
                 let obj = { ...driver, id: driver._id.toString() };
-                console.log(obj);
                 res.status(200).json(obj);
                 
             } else{
@@ -127,7 +130,7 @@ const DriverController = {
             }
             driverExists.status = availability;
             await driverExists.save();
-            publishToExchange("driver-availability", {driver_id: id, availability});
+            publishToExchange("driver-availability", {driver_id: id, availability, _correlationId: res.locals.requestId});
             res.status(200).json(driverExists);
         } catch(error: any){
             res.status(500).json({message: error.message});
@@ -135,10 +138,9 @@ const DriverController = {
     },
     getDriversByStatus: async (req: Request, res: Response)=>{
         const status = req.params.status;
-        console.log(status);
+        logger.info({ requestId: res.locals.requestId, status }, "driver.listByStatus");
         try{
             const driverByStatus = await drivers.find({status: status});
-            console.log(status, ": ", driverByStatus);
             res.status(200).json(driverByStatus);
         } catch(error: any){
             res.status(500).json({message: error.message});
@@ -173,57 +175,55 @@ const DriverController = {
   
 subscribeToEvent("new-trip", async (message: any)=>{
     try {
-        console.log("message: ", message)
         const envelope = JSON.parse(message);
-        const { eventId } = envelope;
+        const { eventId, correlationId } = envelope;
         const trip = envelope?.payload ?? envelope;
 
         if (eventId) {
             const isNew = await redisClient.set(`dedupe:driver:${eventId}`, '1', { NX: true, EX: 86400 });
             if (!isNew) {
-                console.log(`Skipping duplicate event ${eventId}`);
+                logger.info({ eventId, correlationId }, "rabbit.dedupe.skip");
                 return;
             }
         }
 
         const driver_id = trip.driver;
         const driver = await drivers.findById(driver_id);
-        console.log("driver: ", driver);
+        logger.info({ driver_id, correlationId }, "driver.assignTrip");
         if(driver){
             driver.status = 'occupied';
             await driver.save();
-            publishToExchange("driver-availability", {driver_id, availability: 'occupied'});
+            publishToExchange("driver-availability", {driver_id, availability: 'occupied', _correlationId: correlationId});
         };
         
     } catch (error) {
-        console.error("Error processing new trip:", error);
+        logger.error({ err: error }, "Error processing new trip");
     }
 });
 
 subscribeToEvent("trip-complete", async (message: any)=>{
     try {
-        console.log('Trip completed: ', message);
         const envelope = JSON.parse(message);
-        const { eventId } = envelope;
+        const { eventId, correlationId } = envelope;
         const trip = envelope?.payload ?? envelope;
 
         if (eventId) {
             const isNew = await redisClient.set(`dedupe:driver:${eventId}`, '1', { NX: true, EX: 86400 });
             if (!isNew) {
-                console.log(`Skipping duplicate event ${eventId}`);
+                logger.info({ eventId, correlationId }, "rabbit.dedupe.skip");
                 return;
             }
         }
         const driver = await drivers.findById(trip.driver);
-        console.log("driver: ", driver);
+        logger.info({ driver_id: trip.driver, correlationId }, "driver.completeTrip");
         if(driver){
             driver.status = 'active';
             await driver.save();
-            publishToExchange("driver-availability", {driver_id: trip.driver , availability: 'active'});
+            publishToExchange("driver-availability", {driver_id: trip.driver , availability: 'active', _correlationId: correlationId});
         };
         
     } catch (error) {
-        console.error("Error processing complete trip:", error);
+        logger.error({ err: error }, "Error processing complete trip");
     }    
 
 });

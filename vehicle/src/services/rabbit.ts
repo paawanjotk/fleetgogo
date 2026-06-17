@@ -1,6 +1,7 @@
 import amqp from 'amqplib';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import { logger } from '../utils/logger';
 dotenv.config();
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || process.env.RABBIT_URL || '';
@@ -15,7 +16,7 @@ let reconnectTimer: NodeJS.Timeout | null = null;
 
 async function connect() {
     if (!RABBITMQ_URL) {
-        console.warn('RABBITMQ_URL not set; RabbitMQ disabled');
+        logger.warn('RABBITMQ_URL not set; RabbitMQ disabled');
         return;
     }
     if (channel) return;
@@ -28,10 +29,10 @@ async function connect() {
             try {
                 connection = await amqp.connect(RABBITMQ_URL);
                 connection.on('error', (err) => {
-                    console.error('RabbitMQ connection error', err);
+                    logger.error({ err }, 'RabbitMQ connection error');
                 });
                 connection.on('close', () => {
-                    console.error('RabbitMQ connection closed; reconnecting');
+                    logger.error('RabbitMQ connection closed; reconnecting');
                     channel = undefined as any;
                     connection = undefined as any;
                     if (!reconnectTimer) {
@@ -46,10 +47,10 @@ async function connect() {
                 await channel.assertExchange(EXCHANGE_NAME, 'topic', { durable: true });
                 await channel.assertExchange(DLX_NAME, 'direct', { durable: true });
                 channel.prefetch(10);
-                console.log('Connected to RabbitMQ with Topic Exchange');
+                logger.info('Connected to RabbitMQ with Topic Exchange');
             } catch (err) {
                 const delayMs = Math.min(1000 * Math.pow(2, attempt - 1), 15000);
-                console.warn(`RabbitMQ connect failed (attempt ${attempt}); retrying in ${delayMs}ms`);
+                logger.warn({ attempt, delayMs }, 'RabbitMQ connect failed; retrying');
                 await new Promise((r) => setTimeout(r, delayMs));
             }
         }
@@ -67,6 +68,7 @@ async function publishToExchange(eventType: string, data: any) {
         eventId: crypto.randomUUID(),
         eventType,
         occurredAt: new Date().toISOString(),
+        correlationId: data?._correlationId ?? null,
         payload: data,
     };
 
@@ -76,7 +78,7 @@ async function publishToExchange(eventType: string, data: any) {
         Buffer.from(JSON.stringify(envelope)),
         { persistent: true, contentType: 'application/json' }
     );
-    console.log(`Published to ${eventType}: ${JSON.stringify(envelope)}`);
+    logger.info({ eventType, eventId: envelope.eventId, correlationId: envelope.correlationId }, 'rabbit.publish');
 }
 
 async function subscribeToEvent(eventType: string, callback: (msg: string) => void) {
@@ -99,7 +101,7 @@ async function subscribeToEvent(eventType: string, callback: (msg: string) => vo
     });
     await channel.bindQueue(queueName, EXCHANGE_NAME, eventType);
 
-    console.log(`Subscribed to event: ${eventType} with queue: ${queueName}`);
+    logger.info({ eventType, queueName }, 'rabbit.subscribe');
 
     channel.consume(queueName, async (message) => {
         if (!message) return;
@@ -107,7 +109,7 @@ async function subscribeToEvent(eventType: string, callback: (msg: string) => vo
             await callback(message.content.toString());
             channel.ack(message);
         } catch (err) {
-            console.error(`Error handling ${eventType}; dead-lettering`, err);
+            logger.error({ err, eventType }, 'Error handling event; dead-lettering');
             channel.nack(message, false, false);
         }
     }, { noAck: false });
