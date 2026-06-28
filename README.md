@@ -197,6 +197,19 @@ docker ps
 
 ---
 
+## Integration Tests
+
+Run the full API test suite against Docker locally:
+
+```bash
+cd tests
+npm run test:docker
+```
+
+See [tests/README.md](tests/README.md) for details.
+
+---
+
 ## Future Enhancements
 
 - Error Handling in GraphQL

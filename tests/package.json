@@ -1,0 +1,21 @@
+{
+  "name": "fleetgogo-integration-tests",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch --runInBand",
+    "test:docker": "bash scripts/run-tests.sh",
+    "test:docker:keep": "KEEP_RUNNING=true bash scripts/run-tests.sh",
+    "docker:up": "bash scripts/docker-up.sh",
+    "docker:down": "bash scripts/docker-down.sh"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "axios": "^1.7.9",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}
