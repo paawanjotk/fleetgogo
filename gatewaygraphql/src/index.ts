@@ -7,12 +7,20 @@ import { expressMiddleware } from "@apollo/server/express4";
 import dotenv from "dotenv";
 import redisClient from "./services/redis.js";
 import { requestIdMiddleware } from "./middleware/requestId.js";
+import { metricsMiddleware } from "./middleware/metrics.js";
 import { httpLogger } from "./middleware/httpLogger.js";
 import { logger } from "./utils/logger.js";
+import { register } from "./services/metrics.js";
 dotenv.config();
 const app = express();
 app.use(requestIdMiddleware);
+app.use(metricsMiddleware);
 app.use(httpLogger);
+
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
 
 const CACHE_EXPIRATION = 300;
 const DRIVERS = process.env.DRIVERS_SERVICE_URL;

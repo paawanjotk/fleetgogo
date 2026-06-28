@@ -2,6 +2,13 @@ import amqp from 'amqplib';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
+import {
+    rabbitmqConsumerErrorsTotal,
+    rabbitmqEventLag,
+    rabbitmqMessageProcessingDuration,
+    rabbitmqMessagesConsumedTotal,
+    rabbitmqMessagesPublishedTotal,
+} from './metrics';
 dotenv.config();
 
 const RABBITMQ_URL = process.env.RABBITMQ_URL || process.env.RABBIT_URL || '';
@@ -78,6 +85,7 @@ async function publishToExchange(eventType: string, data: any) {
         Buffer.from(JSON.stringify(envelope)),
         { persistent: true, contentType: 'application/json' }
     );
+    rabbitmqMessagesPublishedTotal.inc({ event_type: eventType });
     logger.info({ eventType, eventId: envelope.eventId, correlationId: envelope.correlationId }, 'rabbit.publish');
 }
 
@@ -105,12 +113,33 @@ async function subscribeToEvent(eventType: string, callback: (msg: string) => vo
 
     channel.consume(queueName, async (message) => {
         if (!message) return;
+
+        const processStart = process.hrtime.bigint();
         try {
-            await callback(message.content.toString());
+            const raw = message.content.toString();
+
+            try {
+                const envelope = JSON.parse(raw);
+                if (envelope.occurredAt) {
+                    const lagSec = (Date.now() - new Date(envelope.occurredAt).getTime()) / 1000;
+                    if (lagSec >= 0) {
+                        rabbitmqEventLag.observe({ event_type: eventType }, lagSec);
+                    }
+                }
+            } catch {
+                // ignore malformed envelope for lag metric
+            }
+
+            await callback(raw);
+            rabbitmqMessagesConsumedTotal.inc({ event_type: eventType });
             channel.ack(message);
         } catch (err) {
+            rabbitmqConsumerErrorsTotal.inc({ event_type: eventType });
             logger.error({ err, eventType }, 'Error handling event; dead-lettering');
             channel.nack(message, false, false);
+        } finally {
+            const durationSec = Number(process.hrtime.bigint() - processStart) / 1e9;
+            rabbitmqMessageProcessingDuration.observe({ event_type: eventType }, durationSec);
         }
     }, { noAck: false });
 }

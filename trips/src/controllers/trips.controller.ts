@@ -3,6 +3,7 @@ import trips from "../models/trips.model";
 import redisClient from "../services/redis";
 import { publishToExchange, subscribeToEvent } from "../services/rabbit";
 import { logger } from "../utils/logger";
+import { redisAtomicPopTotal, tripCreationTotal } from "../services/metrics";
 
 const DRIVER_KEY = "active_drivers";
 const VEHICLE_KEY = "active_vehicles";
@@ -20,6 +21,8 @@ return value
 
 const atomicPop = async (hashKey: string): Promise<{ _id: string } | null> => {
     const result = await redisClient.eval(LUA_ATOMIC_POP, { keys: [hashKey], arguments: [] });
+    const hit = !!result;
+    redisAtomicPopTotal.inc({ key: hashKey, result: hit ? 'hit' : 'miss' });
     if (!result) return null;
     return JSON.parse(result as string);
 };
@@ -34,6 +37,7 @@ const tripController = {
             // invisible to any concurrent request from this point forward.
             const reservedDriver = await atomicPop(DRIVER_KEY);
             if (!reservedDriver) {
+                tripCreationTotal.inc({ result: 'no_driver' });
                 return res.status(404).json({ message: "No active drivers available" });
             }
 
@@ -42,6 +46,7 @@ const tripController = {
             if (!reservedVehicle) {
                 // No vehicle available — put the driver back (compensation step).
                 await redisClient.hSet(DRIVER_KEY, reservedDriver._id, JSON.stringify(reservedDriver));
+                tripCreationTotal.inc({ result: 'no_vehicle' });
                 return res.status(404).json({ message: "No available vehicles" });
             }
 
@@ -57,6 +62,7 @@ const tripController = {
                 // DB write failed — compensate both reservations so they re-enter the pool.
                 await redisClient.hSet(DRIVER_KEY, reservedDriver._id, JSON.stringify(reservedDriver));
                 await redisClient.hSet(VEHICLE_KEY, reservedVehicle._id, JSON.stringify(reservedVehicle));
+                tripCreationTotal.inc({ result: 'db_error' });
                 throw dbError;
             }
 
@@ -64,6 +70,7 @@ const tripController = {
             // and emit availability events — those will attempt hDel on keys already gone. No-op, fine.
             await publishToExchange("new-trip", { ...newTrip.toObject(), _correlationId: res.locals.requestId });
 
+            tripCreationTotal.inc({ result: 'success' });
             res.status(201).json({
                 _id: newTrip._id,
                 driver: newTrip.driver.toString(),

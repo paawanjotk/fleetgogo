@@ -29,6 +29,7 @@
     "@opentelemetry/exporter-trace-otlp-http": "^0.53.0",
     "@opentelemetry/sdk-node": "^0.53.0",
     "pino": "^9.0.0",
-    "pino-http": "^10.0.0"
+    "pino-http": "^10.0.0",
+    "prom-client": "^15.1.3"
   }
 }

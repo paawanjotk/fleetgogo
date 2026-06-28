@@ -6,8 +6,10 @@ import router from "./routes/vehicle.routes";
 import healthRouter from "./routes/health.routes";
 import {connect} from "./services/rabbit";
 import { requestIdMiddleware } from "./middleware/requestId";
+import { metricsMiddleware } from "./middleware/metrics";
 import { httpLogger } from "./middleware/httpLogger";
 import { logger } from "./utils/logger";
+import { register } from "./services/metrics";
 connect();
 dotenv.config();
 
@@ -15,9 +17,14 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(requestIdMiddleware);
+app.use(metricsMiddleware);
 app.use(httpLogger);
 const port = 3002;
 
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
 
 app.use('/health', healthRouter);
 app.use('/vehicles', router);

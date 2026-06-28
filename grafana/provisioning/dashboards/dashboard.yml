@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: FleetGoGo
+    orgId: 1
+    folder: FleetGoGo
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards

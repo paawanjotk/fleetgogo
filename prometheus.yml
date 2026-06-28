@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: driver
+    static_configs:
+      - targets: ['driver:3001']
+    metrics_path: /metrics
+
+  - job_name: vehicle
+    static_configs:
+      - targets: ['vehicle:3002']
+    metrics_path: /metrics
+
+  - job_name: trips
+    static_configs:
+      - targets: ['trips:3003']
+    metrics_path: /metrics
+
+  - job_name: gatewaygraphql
+    static_configs:
+      - targets: ['gatewaygraphql:4000']
+    metrics_path: /metrics
